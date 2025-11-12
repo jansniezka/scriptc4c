@@ -20,35 +20,38 @@ const REQUIRED_ENV_VARS = [
   "ASSISTANT_ID_DETAILED",
 ];
 
-exports.handler = async (event) => {
+module.exports = async (req, res) => {
+  if (req.method !== "POST") {
+    res.setHeader("Allow", "POST");
+    return res.status(405).json({ success: false, error: "Method Not Allowed" });
+  }
+
+  const missingRequired = REQUIRED_ENV_VARS.filter((key) => !process.env[key]);
+  if (missingRequired.length > 0) {
+    return res.status(500).json({
+      success: false,
+      error: `Brak wymaganych zmiennych środowiskowych: ${missingRequired.join(", ")}`,
+    });
+  }
+
+  const body = normalizeRequestBody(req.body);
+  const action = body?.action || "ask";
+
   try {
-    if (event.httpMethod !== "POST") {
-      return jsonResponse(405, { success: false, error: "Method Not Allowed" });
-    }
-
-    const missingRequired = REQUIRED_ENV_VARS.filter((key) => !process.env[key]);
-    if (missingRequired.length > 0) {
-      return jsonResponse(500, {
-        success: false,
-        error: `Brak wymaganych zmiennych środowiskowych: ${missingRequired.join(", ")}`,
-      });
-    }
-
-    const body = safeJsonParse(event.body);
-    const action = body?.action || "ask";
-
     if (action === "ask") {
-      return await handleAsk(body);
+      const response = await handleAsk(body);
+      return res.status(response.status).json(response.payload);
     }
 
     if (action === "rate") {
-      return await handleRate(body);
+      const response = await handleRate(body);
+      return res.status(response.status).json(response.payload);
     }
 
-    return jsonResponse(400, { success: false, error: "Nieznana akcja" });
+    return res.status(400).json({ success: false, error: "Nieznana akcja" });
   } catch (error) {
     console.error("assistant-proxy error:", error);
-    return jsonResponse(500, {
+    return res.status(500).json({
       success: false,
       error: "Wystąpił niespodziewany błąd serwera.",
       details: error?.message,
@@ -61,11 +64,11 @@ async function handleAsk(body) {
   const assistantKey = typeof body?.assistantKey === "string" ? body.assistantKey.trim().toUpperCase() : "";
 
   if (!question) {
-    return jsonResponse(400, { success: false, error: "Brak pytania." });
+    return buildResponse(400, { success: false, error: "Brak pytania." });
   }
 
   if (!assistantKey || !ASSISTANT_CONFIG[assistantKey]?.id) {
-    return jsonResponse(400, { success: false, error: "Nieprawidłowy identyfikator asystenta." });
+    return buildResponse(400, { success: false, error: "Nieprawidłowy identyfikator asystenta." });
   }
 
   const assistant = ASSISTANT_CONFIG[assistantKey];
@@ -81,7 +84,7 @@ async function handleAsk(body) {
     updateExisting: "false",
   });
 
-  return jsonResponse(200, {
+  return buildResponse(200, {
     success: true,
     answer,
     assistantKey,
@@ -96,16 +99,16 @@ async function handleRate(body) {
   const assistantKey = typeof body?.assistantKey === "string" ? body.assistantKey.trim().toUpperCase() : "";
 
   if (!rating) {
-    return jsonResponse(400, { success: false, error: "Nieprawidłowy typ oceny." });
+    return buildResponse(400, { success: false, error: "Nieprawidłowy typ oceny." });
   }
   if (!question) {
-    return jsonResponse(400, { success: false, error: "Brak pytania do oceny." });
+    return buildResponse(400, { success: false, error: "Brak pytania do oceny." });
   }
   if (!answer) {
-    return jsonResponse(400, { success: false, error: "Brak odpowiedzi do oceny." });
+    return buildResponse(400, { success: false, error: "Brak odpowiedzi do oceny." });
   }
   if (!assistantKey || !ASSISTANT_CONFIG[assistantKey]?.id) {
-    return jsonResponse(400, { success: false, error: "Nieprawidłowy identyfikator asystenta." });
+    return buildResponse(400, { success: false, error: "Nieprawidłowy identyfikator asystenta." });
   }
 
   const assistant = ASSISTANT_CONFIG[assistantKey];
@@ -119,7 +122,7 @@ async function handleRate(body) {
     updateExisting: "true",
   });
 
-  return jsonResponse(200, { success: true });
+  return buildResponse(200, { success: true });
 }
 
 async function runAssistant(assistantId, question) {
@@ -238,15 +241,20 @@ async function sendToSpreadsheet({ question, answer, assistantName, assistantId,
   }
 }
 
-function jsonResponse(statusCode, payload) {
-  return {
-    statusCode,
-    headers: {
-      "Content-Type": "application/json",
-      "Access-Control-Allow-Origin": "*",
-    },
-    body: JSON.stringify(payload),
-  };
+function buildResponse(status, payload) {
+  return { status, payload };
+}
+
+function normalizeRequestBody(body) {
+  if (!body) {
+    return {};
+  }
+
+  if (typeof body === "string") {
+    return safeJsonParse(body);
+  }
+
+  return body;
 }
 
 function safeJsonParse(value) {

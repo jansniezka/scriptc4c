@@ -440,7 +440,7 @@
   }
 
   async function requestAssistantResponse(question, assistant) {
-    const response = await fetch("/.netlify/functions/assistant-proxy", {
+    const response = await fetch("/api/assistant-proxy", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -459,7 +459,7 @@
   }
 
   async function sendRating(rating, question, answer, assistant) {
-    const response = await fetch("/.netlify/functions/assistant-proxy", {
+    const response = await fetch("/api/assistant-proxy", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

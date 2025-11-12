@@ -1,10 +1,12 @@
 node_modules/
+index-old.html
 .env
 .env.*
 *.log
 dist/
 build/
 .netlify/
+.vercel/
 .cache/
 .parcel-cache/
 coverage/
