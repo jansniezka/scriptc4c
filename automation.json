@@ -1,0 +1,193 @@
+{
+    "name": "FAQ JSONL from Audio/Video (Webhook → Whisper → JSONL) - compat",
+    "nodes": [
+      {
+        "parameters": {
+          "path": "faq/ingest",
+          "options": {
+            "responseMode": "lastNode",
+            "binaryData": true
+          }
+        },
+        "name": "Webhook (receive upload)",
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 1,
+        "position": [100, 300]
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "string": [
+              {
+                "value1": "={{$json.url}}",
+                "operation": "isEmpty"
+              }
+            ]
+          }
+        },
+        "name": "IF (url provided?)",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2,
+        "position": [320, 300]
+      },
+      {
+        "parameters": {
+          "url": "={{ $json[\"url\"] }}",
+          "responseFormat": "file",
+          "options": {}
+        },
+        "name": "HTTP Request (download if url)",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4,
+        "position": [560, 430]
+      },
+      {
+        "parameters": {
+          "functionCode": "const item = $input.item(0);\n// Jeśli plik pobrany z URL, binarka zwykle siedzi pod 'data'\nif (item.binary && item.binary.data && !item.binary.media) {\n  item.binary.media = item.binary.data;\n  delete item.binary.data;\n}\n// Jeśli przyszedł upload przez webhook, spodziewamy się 'media'\nif (!item.binary || !item.binary.media) {\n  throw new Error(\"Brak pliku binarnego 'media'. Wyślij multipart z polem 'media' albo body z JSON { url }. \");\n}\nreturn [item];"
+        },
+        "name": "Function (normalize binary→media)",
+        "type": "n8n-nodes-base.function",
+        "typeVersion": 2,
+        "position": [780, 360]
+      },
+      {
+        "parameters": {
+          "url": "https://api.openai.com/v1/audio/transcriptions",
+          "options": {
+            "sendBinaryData": true,
+            "binaryPropertyName": "media"
+          },
+          "jsonParameters": false,
+          "responseFormat": "json",
+          "optionsFormDataParametersUi": {
+            "parameter": [
+              { "name": "model", "value": "whisper-1" },
+              { "name": "response_format", "value": "json" },
+              { "name": "temperature", "value": "0" },
+              { "name": "prompt", "value": "language=pl" }
+            ]
+          },
+          "headerParametersUi": {
+            "parameter": [
+              { "name": "Authorization", "value": "Bearer YOUR_OPENAI_API_KEY" }
+            ]
+          }
+        },
+        "name": "HTTP (Whisper transcription)",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4,
+        "position": [1000, 360]
+      },
+      {
+        "parameters": {
+          "functionCode": "const item = $input.item(0);\n// OpenAI zwraca { text: \"...\" }\nitem.json.transcript = item.json.text || '';\nreturn [item];"
+        },
+        "name": "Function (alias transcript)",
+        "type": "n8n-nodes-base.function",
+        "typeVersion": 2,
+        "position": [1220, 360]
+      },
+      {
+        "parameters": {
+          "url": "https://api.openai.com/v1/chat/completions",
+          "options": {},
+          "jsonParameters": true,
+          "responseFormat": "json",
+          "headerParametersUi": {
+            "parameter": [
+              { "name": "Authorization", "value": "Bearer YOUR_OPENAI_API_KEY" },
+              { "name": "Content-Type", "value": "application/json" }
+            ]
+          },
+          "queryParametersJson": "",
+          "bodyParametersJson": "={\n  \"model\": \"gpt-4o-mini\",\n  \"temperature\": 0.1,\n  \"response_format\": {\"type\": \"text\"},\n  \"messages\": [\n    {\"role\":\"system\",\"content\":\"Jesteś asystentem, który z transkrypcji audio/video wyciąga pary FAQ (pytanie↔odpowiedź) i zwraca wyłącznie JSONL (NDJSON), bez żadnych komentarzy ani Markdownu.\"},\n    {\"role\":\"system\",\"content\":\"ZASADY WYJŚCIA (BARDZO WAŻNE):\\n- Zwracaj tylko JSONL: każdy wiersz to pojedynczy obiekt JSON.\\n- Zero poprzedzających/kończących komentarzy, znaczników ani opisów. Tylko surowe linie JSON.\\n- Pola każdego obiektu: id, question, paraphrases, answer, keywords, source, locale, tags, last_updated, visibility, owner.\\n- locale ustaw na \\\"pl-PL\\\". visibility zazwyczaj \\\"public\\\".\\n- last_updated ustaw na dzisiejszą datę w formacie RRRR-MM-DD: {{$now.toFormat('yyyy-LL-dd')}}\\n- id twórz jako faq_XXX (001, 002, …) w kolejności logicznej.\\n- paraphrases i keywords to krótkie listy (2–6 pozycji).\\n- source: jeżeli da się wywnioskować dokument/podręcznik/kanał (np. KB-...), wpisz go; w przeciwnym razie wpisz \\\"Transcript\\\".\\n- owner: spróbuj zidentyfikować sensownego właściciela (np. \\\"Support\\\", \\\"Legal\\\", \\\"Billing\\\", \\\"IT\\\").\\n- tags: 1–3 tagi tematyczne.\\n- Nie wymyślaj faktów wykraczających poza transkrypcję. Jeśli brak jednoznacznej odpowiedzi, pomiń wpis.\\n- Liczba linii = liczbie rozpoznanych par QA. Jeśli nic nie znaleziono, zwróć pusty wynik (zero linii).\"},\n    {\"role\":\"user\",\"content\":\"TRANSKRYPCJA:\\n\" + $json.transcript}\n  ]\n}"
+        },
+        "name": "HTTP (Chat → JSONL)",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4,
+        "position": [1460, 360]
+      },
+      {
+        "parameters": {
+          "functionCode": "const item = $input.item(0);\n// Chat Completions: { choices: [{ message: { content } }] }\nconst raw = (item.json.choices && item.json.choices[0] && item.json.choices[0].message && item.json.choices[0].message.content || '').trim();\nif (!raw) {\n  item.json = { jsonl: '', count: 0, message: 'Empty JSONL (no FAQs found).' };\n  return [item];\n}\nconst lines = raw.split(/\\r?\\n/).filter(l => l.trim().length);\nfor (let i = 0; i < lines.length; i++) {\n  try { JSON.parse(lines[i]); } catch (e) {\n    throw new Error(`Line ${i+1} is not valid JSON: ${lines[i]}`);\n  }\n}\nitem.json = { jsonl: lines.join('\\n'), count: lines.length };\nconst buff = Buffer.from(item.json.jsonl, 'utf-8');\nitem.binary = item.binary || {};\nitem.binary[\"faq.jsonl\"] = {\n  data: buff.toString('base64'),\n  fileName: `faq_${Date.now()}.jsonl`,\n  mimeType: 'application/x-ndjson'\n};\nreturn [item];"
+        },
+        "name": "Function (validate & attach)",
+        "type": "n8n-nodes-base.function",
+        "typeVersion": 2,
+        "position": [1700, 360]
+      },
+      {
+        "parameters": {
+          "responseBody": "={{ $json.jsonl }}",
+          "options": {
+            "responseData": "text",
+            "responseCode": 200
+          }
+        },
+        "name": "Respond (body: JSONL text)",
+        "type": "n8n-nodes-base.respondToWebhook",
+        "typeVersion": 1,
+        "position": [1920, 260]
+      },
+      {
+        "parameters": {
+          "binaryPropertyName": "faq.jsonl",
+          "options": {
+            "responseCode": 200,
+            "fileName": "={{ $binary[\"faq.jsonl\"].fileName }}"
+          }
+        },
+        "name": "Respond (attachment: faq.jsonl)",
+        "type": "n8n-nodes-base.respondToWebhook",
+        "typeVersion": 1,
+        "position": [1920, 500]
+      }
+    ],
+    "connections": {
+      "Webhook (receive upload)": {
+        "main": [
+          [{ "node": "IF (url provided?)", "type": "main", "index": 0 }]
+        ]
+      },
+      "IF (url provided?)": {
+        "main": [
+          [{ "node": "Function (normalize binary→media)", "type": "main", "index": 0 }],
+          [{ "node": "HTTP Request (download if url)", "type": "main", "index": 0 }]
+        ]
+      },
+      "HTTP Request (download if url)": {
+        "main": [
+          [{ "node": "Function (normalize binary→media)", "type": "main", "index": 0 }]
+        ]
+      },
+      "Function (normalize binary→media)": {
+        "main": [
+          [{ "node": "HTTP (Whisper transcription)", "type": "main", "index": 0 }]
+        ]
+      },
+      "HTTP (Whisper transcription)": {
+        "main": [
+          [{ "node": "Function (alias transcript)", "type": "main", "index": 0 }]
+        ]
+      },
+      "Function (alias transcript)": {
+        "main": [
+          [{ "node": "HTTP (Chat → JSONL)", "type": "main", "index": 0 }]
+        ]
+      },
+      "HTTP (Chat → JSONL)": {
+        "main": [
+          [{ "node": "Function (validate & attach)", "type": "main", "index": 0 }]
+        ]
+      },
+      "Function (validate & attach)": {
+        "main": [
+          [
+            { "node": "Respond (body: JSONL text)", "type": "main", "index": 0 },
+            { "node": "Respond (attachment: faq.jsonl)", "type": "main", "index": 0 }
+          ]
+        ]
+      }
+    }
+  }
+  

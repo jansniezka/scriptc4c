@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>OpenAI Assistant Panel</title>
+  <style>
+    #openai-response-container {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+      margin-top: 30px;
+      width: 100%;
+    }
+    .openai-response-panel {
+      background: #fff;
+      border-left: 4px solid #007bff;
+      border-radius: 8px;
+      min-height: 300px;
+      max-height: 500px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      font-family: sans-serif;
+      font-size: 14px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      transition: all 0.3s ease;
+    }
+    .openai-panel-toolbar {
+      flex-shrink: 0;
+      background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+      padding: 8px 12px;
+      border-bottom: 1px solid #dee2e6;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-radius: 8px 8px 0 0;
+    }
+    .openai-panel-buttons-left {
+      display: flex;
+      gap: 6px;
+    }
+    
+    .openai-panel-buttons-right {
+      display: flex;
+      gap: 6px;
+    }
+    .openai-panel-toolbar button {
+      background: #fff;
+      border: 1px solid #dee2e6;
+      border-radius: 4px;
+      font-size: 12px;
+      cursor: pointer;
+      padding: 4px 8px;
+      transition: all 0.2s ease;
+    }
+    
+    .openai-panel-toolbar button:hover {
+      background: #f8f9fa;
+      border-color: #adb5bd;
+    }
+    .openai-panel-content {
+      padding: 15px;
+      overflow-y: auto;
+      flex: 1 1 auto;
+      line-height: 1.6;
+    }
+    .openai-response-panel.minimized {
+      min-height: auto;
+      height: auto;
+    }
+    .openai-response-panel.minimized .openai-panel-content {
+      display: none;
+    }
+    .openai-send-button {
+      position: absolute;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      padding: 6px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      z-index: 10000;
+      font-size: 13px;
+    }
+
+    /* Nowe style dla interfejsu */
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 40px;
+      padding: 20px 40px;
+      background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+      color: white;
+      border-radius: 10px;
+      margin-bottom: 30px;
+    }
+
+    header h1 {
+      margin: 0 0 10px 0;
+      font-size: 2.5em;
+      font-weight: 300;
+    }
+
+    header p {
+      margin: 0;
+      font-size: 1.1em;
+      opacity: 0.9;
+    }
+
+    .input-section {
+      margin-bottom: 30px;
+    }
+
+    .input-group {
+      display: flex;
+      gap: 15px;
+      align-items: flex-start;
+    }
+
+    #question-input {
+      flex: 1;
+      width: 100%;
+      padding: 15px;
+      border: 2px solid #e1e5e9;
+      border-radius: 8px;
+      font-size: 16px;
+      font-family: inherit;
+      resize: vertical;
+      min-height: 100px;
+      transition: border-color 0.3s ease;
+      box-sizing: border-box;
+    }
+
+    #question-input:focus {
+      outline: none;
+      border-color: #007bff;
+      box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+    }
+
+    .send-btn {
+      padding: 15px 25px;
+      background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      white-space: nowrap;
+      min-width: 180px;
+    }
+
+    .send-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(0, 123, 255, 0.4);
+    }
+
+    .send-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .rating-info {
+      margin-top: 15px;
+      text-align: center;
+    }
+
+    .rating-info p {
+      margin: 0;
+      font-size: 14px;
+      color: #6c757d;
+      line-height: 1.4;
+    }
+
+    .examples-section {
+      margin-bottom: 30px;
+    }
+
+    .examples-section h3 {
+      margin-bottom: 15px;
+      color: #333;
+      font-size: 1.2em;
+    }
+
+    .example-questions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .example-btn {
+      padding: 8px 16px;
+      background: #f8f9fa;
+      border: 1px solid #e1e5e9;
+      border-radius: 20px;
+      color: #495057;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      white-space: nowrap;
+      max-width: 300px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+
+
+    /* Responsywność */
+    @media (max-width: 768px) {
+      .input-group {
+        flex-direction: column;
+      }
+      
+      #question-input {
+        width: 100%;
+        min-width: 100%;
+      }
+      
+      .send-btn {
+        width: 100%;
+      }
+      
+      #openai-response-container {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
+      }
+      
+      .openai-response-panel {
+        min-height: 250px;
+      }
+    }
+    
+    @media (max-width: 480px) {
+      .container {
+        padding: 15px;
+      }
+      
+      header {
+        padding: 20px 20px;
+      }
+      
+      header h1 {
+        font-size: 2em;
+      }
+      
+      #question-input {
+        min-height: 80px;
+        font-size: 14px;
+      }
+      
+      #openai-response-container {
+        grid-template-columns: 1fr;
+        gap: 10px;
+      }
+    }
+  </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <p>Zadaj pytanie dotyczące produktów bądź usług Fabryki Farb i Lakierów Śnieżka i otrzymaj odpowiedzi od naszych asystentów AI znających produkty, artykuły, blogi, poradniki i inne źródła marek Vidaron, Magnat, Acryl-Putz, Foveo-Tech, Rafil, Śnieżka.</p>
+        </header>
+
+        <main>
+            <div class="input-section">
+                <div class="input-group">
+                    <textarea 
+                        id="question-input" 
+                        placeholder="Wklej zapytanie od klienta lub wpisz swoje pytanie, np.: Jaką farbę wybrać do malowania ścian wewnętrznych?"
+                        rows="4"
+                    ></textarea>
+                    <button id="send-button" class="send-btn">
+                        <span class="btn-text">Wyślij do Asystenta</span>
+                        <span class="btn-loading" style="display: none;">Wysyłanie...</span>
+                    </button>
+                </div>
+                <div class="rating-info">
+                    <p>Zachęcamy do oceniania odpowiedzi przyciskami <img src="data:image/svg+xml,%3Csvg%20%20xmlns=%22http://www.w3.org/2000/svg%22%20%20width=%2220%22%20%20height=%2220%22%20%20viewBox=%220%200%2024%2024%22%20%20fill=%22none%22%20%20stroke=%22currentColor%22%20%20stroke-width=%222%22%20%20stroke-linecap=%22round%22%20%20stroke-linejoin=%22round%22%20%20class=%22icon%20icon-tabler%20icons-tabler-outline%20icon-tabler-thumb-up%22%3E%3Cpath%20stroke=%22none%22%20d=%22M0%200h24v24H0z%22%20fill=%22none%22/%3E%3Cpath%20d=%22M7%2011v8a1%201%200%200%201%20-1%201h-2a1%201%200%200%201%20-1%20-1v-7a1%201%200%200%201%201%20-1h3a4%204%200%200%200%204%20-4v-1a2%202%200%200%201%204%200v5h3a2%202%200%200%201%202%202l-1%205a2%203%200%200%201%20-2%202h-7a3%203%200%200%201%20-3%20-3%22%20/%3E%3C/svg%3E" alt="Like" width="20" style="vertical-align:middle;"> i <img src="data:image/svg+xml,%3Csvg%20%20xmlns=%22http://www.w3.org/2000/svg%22%20%20width=%2220%22%20%20height=%2220%22%20%20viewBox=%220%200%2024%2024%22%20%20fill=%22none%22%20%20stroke=%22currentColor%22%20%20stroke-width=%222%22%20%20stroke-linecap=%22round%22%20%20stroke-linejoin=%22round%22%20%20class=%22icon%20icon-tabler%20icons-tabler-outline%20icon-tabler-thumb-down%22%3E%3Cpath%20stroke=%22none%22%20d=%22M0%200h24v24H0z%22%20fill=%22none%22/%3E%3Cpath%20d=%22M7%2013v-8a1%201%200%200%200%20-1%20-1h-2a1%201%200%200%200%20-1%201v7a1%201%200%200%200%201%201h3a4%204%200%200%201%204%204v1a2%202%200%200%200%204%200v-5h3a2%202%200%200%200%202%20-2l-1%20-5a2%203%200%200%200%20-2%20-2h-7a3%203%200%200%200%20-3%203%22%20/%3E%3C/svg%3E" alt="Unlike" width="20" style="vertical-align:middle;">. Pozwoli nam to ulepszać nasz model.</p>
+                </div>
+            </div>
+
+
+
+            <div id="openai-response-container"></div>
+        </main>
+    </div> 
+
+<script>
+(() => {
+  const ICONS = {
+    like: '<img src="data:image/svg+xml,%3Csvg%20%20xmlns=%22http://www.w3.org/2000/svg%22%20%20width=%2224%22%20%20height=%2224%22%20%20viewBox=%220%200%2024%2024%22%20%20fill=%22none%22%20%20stroke=%22currentColor%22%20%20stroke-width=%222%22%20%20stroke-linecap=%22round%22%20%20stroke-linejoin=%22round%22%20%20class=%22icon%20icon-tabler%20icons-tabler-outline%20icon-tabler-thumb-up%22%3E%3Cpath%20stroke=%22none%22%20d=%22M0%200h24v24H0z%22%20fill=%22none%22/%3E%3Cpath%20d=%22M7%2011v8a1%201%200%200%201%20-1%201h-2a1%201%200%200%201%20-1%20-1v-7a1%201%200%200%201%201%20-1h3a4%204%200%200%200%204%20-4v-1a2%202%200%200%201%204%200v5h3a2%202%200%200%201%202%202l-1%205a2%203%200%200%201%20-2%202h-7a3%203%200%200%201%20-3%20-3%22%20/%3E%3C/svg%3E" alt="Like" width="20">',
+    unlike: '<img src="data:image/svg+xml,%3Csvg%20%20xmlns=%22http://www.w3.org/2000/svg%22%20%20width=%2224%22%20%20height=%2224%22%20%20viewBox=%220%200%2024%2024%22%20%20fill=%22none%22%20%20stroke=%22currentColor%22%20%20stroke-width=%222%22%20%20stroke-linecap=%22round%22%20%20stroke-linejoin=%22round%22%20%20class=%22icon%20icon-tabler%20icons-tabler-outline%20icon-tabler-thumb-down%22%3E%3Cpath%20stroke=%22none%22%20d=%22M0%200h24v24H0z%22%20fill=%22none%22/%3E%3Cpath%20d=%22M7%2013v-8a1%201%200%200%200%20-1%20-1h-2a1%201%200%200%200%20-1%201v7a1%201%200%200%200%201%201h3a4%204%200%200%201%204%204v1a2%202%200%200%200%204%200v-5h3a2%202%200%200%200%202%20-2l-1%20-5a2%203%200%200%200%20-2%20-2h-7a3%203%200%200%200%20-3%203%22%20/%3E%3C/svg%3E" alt="Unlike" width="20">',
+  };
+
+  const assistants = [
+    {
+      key: "SHORT",
+      name: "Skrócona wersja",
+      description: "Zwięzła odpowiedź zawierająca tylko kluczowe informacje.",
+    },
+    {
+      key: "PRODUCT",
+      name: "Produktowa wersja",
+      description: "Odpowiedź skupiająca się na cechach i korzyściach produktu.",
+    },
+    {
+      key: "DETAILED",
+      name: "Szczegółowa wersja",
+      description: "Szczegółowa i techniczna odpowiedź zawierająca kontekst i instrukcje.",
+    },
+  ];
+
+  const container = document.getElementById("openai-response-container");
+  const sendButton = document.getElementById("send-button");
+  const questionInput = document.getElementById("question-input");
+  const btnText = sendButton.querySelector(".btn-text");
+  const btnLoading = sendButton.querySelector(".btn-loading");
+
+  sendButton.addEventListener("click", () => {
+    const question = questionInput.value.trim();
+    if (!question) {
+      alert("Proszę wpisać pytanie!");
+      return;
+    }
+
+    btnText.style.display = "none";
+    btnLoading.style.display = "inline";
+    sendButton.disabled = true;
+
+    container.innerHTML = "";
+    assistants.forEach((_, index) => handleSendToAssistant(index, question));
+
+    setTimeout(() => {
+      btnText.style.display = "inline";
+      btnLoading.style.display = "none";
+      sendButton.disabled = false;
+    }, 5000);
+  });
+
+  questionInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && event.ctrlKey) {
+      sendButton.click();
+    }
+  });
+
+  function handleSendToAssistant(index, question) {
+    const assistant = assistants[index];
+    const panel = document.createElement("div");
+    panel.className = "openai-response-panel";
+
+    let latestAnswer = "";
+
+    const toolbar = document.createElement("div");
+    toolbar.className = "openai-panel-toolbar";
+
+    const btnLike = document.createElement("button");
+    btnLike.innerHTML = ICONS.like;
+    btnLike.title = "Oceń odpowiedź pozytywnie";
+    btnLike.addEventListener("click", () => rateAnswer(btnLike, "positive"));
+
+    const btnUnlike = document.createElement("button");
+    btnUnlike.innerHTML = ICONS.unlike;
+    btnUnlike.title = "Oceń odpowiedź negatywnie";
+    btnUnlike.addEventListener("click", () => rateAnswer(btnUnlike, "negative"));
+
+    const btnCopy = document.createElement("button");
+    btnCopy.textContent = "Kopiuj";
+    btnCopy.addEventListener("click", () => copyAnswer(btnCopy, latestAnswer));
+
+    const btnClose = document.createElement("button");
+    btnClose.textContent = "Zamknij";
+    btnClose.addEventListener("click", () => panel.remove());
+
+    const leftGroup = document.createElement("div");
+    leftGroup.className = "openai-panel-buttons-left";
+    leftGroup.append(btnLike, btnUnlike);
+
+    const rightGroup = document.createElement("div");
+    rightGroup.className = "openai-panel-buttons-right";
+    rightGroup.append(btnCopy, btnClose);
+
+    toolbar.append(leftGroup, rightGroup);
+    panel.appendChild(toolbar);
+
+    const content = document.createElement("div");
+    content.className = "openai-panel-content";
+    content.innerHTML = `
+      <div style="font-weight: bold; display: flex; align-items: center; gap: 6px;">
+        ${assistant.name} <span title="${assistant.description}" style="cursor: help;">ℹ️</span>
+      </div><br><i>Ładowanie...</i>`;
+    panel.appendChild(content);
+    container.appendChild(panel);
+
+    (async () => {
+      try {
+        const answer = await requestAssistantResponse(question, assistant);
+        latestAnswer = answer;
+        const formattedAnswer = formatAnswer(answer);
+        content.innerHTML = `
+          <div style="font-weight: bold; display: flex; align-items: center; gap: 6px;">
+            ${assistant.name} <span title="${assistant.description}" style="cursor: help;">ℹ️</span>
+          </div><br>${formattedAnswer}`;
+      } catch (error) {
+        console.error("Błąd podczas pobierania odpowiedzi:", error);
+        content.innerHTML = `<b>Błąd:</b> ${escapeHtml(error.message || "Nie udało się pobrać odpowiedzi.")}`;
+      }
+    })();
+
+    async function rateAnswer(button, ratingType) {
+      if (!latestAnswer) {
+        return;
+      }
+
+      button.textContent = "⏳";
+      button.disabled = true;
+      button.style.cursor = "wait";
+
+      try {
+        await sendRating(ratingType, question, latestAnswer, assistant);
+        button.textContent = "✔️";
+        button.style.cursor = "default";
+      } catch (error) {
+        console.error("Błąd podczas zapisywania oceny:", error);
+        button.textContent = "❌";
+        setTimeout(() => {
+          button.innerHTML = ratingType === "positive" ? ICONS.like : ICONS.unlike;
+          button.disabled = false;
+          button.style.cursor = "pointer";
+        }, 1500);
+      }
+    }
+  }
+
+  async function requestAssistantResponse(question, assistant) {
+    const response = await fetch("/.netlify/functions/assistant-proxy", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "ask",
+        question,
+        assistantKey: assistant.key,
+      }),
+    });
+
+    const data = await parseJsonResponse(response);
+    if (!response.ok || !data.success) {
+      throw new Error(data.error || "Błąd po stronie serwera.");
+    }
+
+    return data.answer;
+  }
+
+  async function sendRating(rating, question, answer, assistant) {
+    const response = await fetch("/.netlify/functions/assistant-proxy", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "rate",
+        rating,
+        question,
+        answer,
+        assistantKey: assistant.key,
+      }),
+    });
+
+    const data = await parseJsonResponse(response);
+    if (!response.ok || !data.success) {
+      throw new Error(data.error || "Nie udało się zapisać oceny.");
+    }
+  }
+
+  function formatAnswer(answer) {
+    const escaped = escapeHtml(answer);
+    const withBold = escaped.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+    return withBold.replace(/\n/g, "<br>");
+  }
+
+  function escapeHtml(text) {
+    return (text || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
+  function copyAnswer(button, answer) {
+    const value = (answer || "").trim();
+    if (!value) {
+      return;
+    }
+
+    const revert = () => setTimeout(() => (button.textContent = "Kopiuj"), 1500);
+
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard
+        .writeText(value)
+        .then(() => {
+          button.textContent = "Skopiowano!";
+          revert();
+        })
+        .catch(() => {
+          button.textContent = "Błąd kopiowania";
+          revert();
+        });
+      return;
+    }
+
+    const tempInput = document.createElement("textarea");
+    tempInput.value = value;
+    document.body.appendChild(tempInput);
+    tempInput.select();
+    try {
+      document.execCommand("copy");
+      button.textContent = "Skopiowano!";
+    } catch (error) {
+      button.textContent = "Błąd kopiowania";
+    }
+    document.body.removeChild(tempInput);
+    revert();
+  }
+
+  async function parseJsonResponse(response) {
+    const rawBody = await response.text();
+    try {
+      return JSON.parse(rawBody);
+    } catch (error) {
+      throw new Error(
+        `Odpowiedź serwera nie jest prawidłowym JSON-em (status ${response.status}).` +
+          (rawBody ? `\nTreść: ${rawBody.slice(0, 200)}${rawBody.length > 200 ? "..." : ""}` : "")
+      );
+    }
+  }
+})();
+</script>
+
+</body>
+</html>
